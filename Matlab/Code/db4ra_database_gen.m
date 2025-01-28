@@ -126,16 +126,21 @@ incidentAngleSteps = (azimuth_stop-azimuth_start)/azimuth_step;
 
 % Inizializzo l'array 4D dove salvo le uscite delle antenne campionate a 2
 % GHz. 
-y = zeros(n_scenarios, sample_length,n_antennas,incidentAngleSteps+1);
+% la riga sottostante è stata commentata. non viene più generato il
+% vettore 4d contenente tutto il database delle chirp campionate a
+% 2 GHz. Utilizzo un vettore temporaneo per salvare l'uscita del
+% widdeband collector. In questo modo accelero l'algoritmo.
+%y = zeros(n_scenarios, sample_length,n_antennas,incidentAngleSteps+1);
 
 % Inizializzo un cell array con dimensioni 1 x n_scenarios. In ciascuna cella salvo le 
 % uscite delle antenne sottocampionate. è necessario utilizzare un cell array perché utilizzando 
 % fattori di sottocampionamento diversi, gli array avranno lunghezza diversa 
-y_ds_cell = cell(1, n_scenarios);
-for i = 1 : n_scenarios
-    y_ds_cell{i} = zeros(ceil((sample_length)/downsample_array(i)), ... 
-        n_antennas,incidentAngleSteps+1); 
+y_ds_cell = cell(n_scenarios*(incidentAngleSteps+1), 2);
+for i = 1 : n_scenarios*(incidentAngleSteps+1)
+    y_ds_cell{i,1} = zeros(ceil((sample_length)/downsample_array(1)), ... 
+        n_antennas); 
 end
+
 
 %inizializzo un rumore
 snr = 30; %dB
@@ -148,10 +153,18 @@ for m = 1 : n_scenarios
     for i = 1 : incidentAngleSteps+1
         incidentAngle = [azimuth_angle;elevation_angle];
         noise = randn(sample_length, 1)*sqrt(noise_variance);
-        y(m,:,:,i) = collector((x_array(m,:))' + noise,incidentAngle); %calcolo l'uscita delle antenne della chirp che incide con l'angolo definito da incident angle
+
+        % la riga sottostante è stata commentata. non viene più generato il
+        % vettore 4d contenente tutto il database delle chirp campionate a
+        % 2 GHz. Utilizzo un vettore temporaneo per salvare l'uscita del
+        % widdeband collector. In questo modo accelero l'algoritmo.
+        %y(m,:,:,i) = collector((x_array(m,:))' + noise,incidentAngle); %calcolo l'uscita delle antenne della chirp che incide con l'angolo definito da incident angle
+        y = collector((x_array(m,:))' + noise,incidentAngle); %calcolo l'uscita delle antenne della chirp che incide con l'angolo definito da incident angle
         for p = 1 : n_antennas
-	        y_ds_cell{m}(:,p,i) = decimate(y(m,:,p,i), downsample_array(m), 128, "fir"); 
+			temp = decimate(y(:,p), downsample_array(m), 128, "fir");
+	        y_ds_cell{(m-1)*(incidentAngleSteps+1)+i,1}(1:length(temp),p) = temp; 
         end
+		y_ds_cell{(m-1)*(incidentAngleSteps+1)+i,2} = azimuth_angle;
         azimuth_angle = azimuth_angle + azimuth_step;
     end
 end
