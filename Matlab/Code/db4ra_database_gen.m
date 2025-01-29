@@ -1,4 +1,6 @@
 %%
+% In questa porzione di codice configuro il Wideband Collector e genero i segnali di stimolo per le antenne
+
 fc = 5.4e9; % 5.4 GHz carrier frequency
 lambda = 0.027*2; %wavelength of maximum useful signal in band of interest (5.4 GHz + 150 MHz), related to inter antenna distance
 n_antennas = 4;
@@ -38,64 +40,6 @@ for i = 1 : n_scenarios
 	x_array(i,:) = chirp(t,f_start,t(end),f_stop_array(i));
 end
 
-
-%%
-%ESEMPIO DI USCITA DEL WIDEBAND COLLECTOR
-%Le antenne ricevono una chirp lineare da 0 MHz a f_stop MHz, proveniente da
-%un angolo azimuth arbitrario e un angolo elevation pari a 0°
-
-%definisco delle variabili per gli angoli
-azimuth_angle = 60; % spanning between +60 and -60
-elevation_angle = 0; % tied constant
-incidentAngle = [azimuth_angle;elevation_angle];
-
-%imposto quale dei cinque scenari utilizzare in questo esempio
-s = 1;
-
-%inizializzo un rumore
-snr = 30; %dB
-P_chirp = (x_array(1,:)*(x_array(1,:))')/sample_length;
-noise_variance = P_chirp/(10^(snr/10));
-
-%inizializzo il vettore sottocampionato
-y_ds = zeros(ceil((sample_length)/downsample_array(s)), n_antennas); 
-
-% genero l'uscita dell'antenna y e la sua versione sotto campionata
-noise = randn(sample_length, 1)*sqrt(noise_variance);
-y = collector((x_array(s,:))' + noise,incidentAngle); %calcolo l'uscita delle antenne della chirp che incide con l'angolo definito da incident angle
-for p = 1 : n_antennas
-    y_ds(:,p) = decimate(y(:,p), downsample_array(s), 128, "fir"); 
-end
-
-%%
-%plot del segnale x, y e y sottocampionata
-
-f_2GHz = (1:sample_length)*1/sample_width;
-f_ds   = f_2GHz(1:length(y_ds));
-
-figure(1)
-plot(f_2GHz,20*log10(abs(fft(x_array(s,:) + noise'))/max(abs(fft(x_array(s,:) + noise')))))
-xlabel('f [Hz]')
-ylabel('x [dB]')
-
-figure(2)
-spectrogram(x_array(s,:) + noise',[],[],[],"centered")
-      
-figure(3)
-plot(f_2GHz,20*log10(abs(fft(y(:,1)))/max(abs(fft(y(:,1))))))
-xlabel('f [Hz]')
-ylabel('y [dB]')
-
-figure(4)
-spectrogram(y(:,1),[],[],[],"centered")
-
-figure(5)
-plot(f_ds,20*log10(abs(fft(y_ds(:,1))/max(abs(fft(y_ds(:,1)))))))
-xlabel('f [Hz]')
-ylabel('y ds [dB]')
-
-figure(6)
-spectrogram(y_ds(:,1),[],[],[],"centered")
 
 %%
 % In questa porzione di codice genero un database con cinque
