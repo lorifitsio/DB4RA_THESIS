@@ -98,14 +98,43 @@ incidentAngleSteps_reduced_j = floor(((azimuth_stop_j-20)-(azimuth_start_j+20))/
 %la lunghezza di ciascun segnale è pari a sample_length diviso il fattore
 %di sottocampionamento della chirp a 150 MHz. tutti i segnali sono adeguati
 %a questa trama, essendo il vettore più lungo
-y_ds_cell = cell(snr_length*n_scenarios*(incidentAngleSteps+1)*incidentAngleSteps_reduced_j*n_sin_jammers, 4);
-for i = 1 : snr_length*n_scenarios*(incidentAngleSteps+1)*incidentAngleSteps_reduced_j*n_sin_jammers
-    y_ds_cell{i,1} = zeros(ceil((sample_length)/downsample_array(1)), ... 
-        n_antennas); 
+n_dataset_samples = snr_length*n_scenarios*(incidentAngleSteps+1)*(1 + incidentAngleSteps_reduced_j*n_sin_jammers);
+y_ds_cell = cell(n_dataset_samples, 4);
+for i = 1 : n_dataset_samples
+    y_ds_cell{i,1} = zeros(ceil((sample_length)/downsample_array(1)), n_antennas); 
 end
 
-
 enable_jammer_jitter = 0;
+y_ds_row = 1;
+
+%ciclo la generazione per ciascuna delle dimensioni di snr_length
+for n = 1 : snr_length
+
+    noise_variance = P_chirp/(10^(snr(n)/10));%imposto la varianza del rumore sulla base dell'snr di riferimento
+    % ciclo for per tutti gli scenari
+    for m = 1 : n_scenarios
+        azimuth_angle = azimuth_start; %imposto l'angolo di partenza per la chirp in questione
+        
+        %spazzo tutto il range di angoli
+        for i = 1 : incidentAngleSteps+1
+            incidentAngle = [azimuth_angle;elevation_angle];
+            noise = randn(sample_length, 1)*sqrt(noise_variance); %genero un vettore di rumore per ogni iterazione
+    
+            y = collector((x_array(m,:))' + noise,incidentAngle); %calcolo l'uscita delle antenne della chirp che incide con l'angolo definito da incident angle
+            
+            %ciclo per il numero di antenne, poiché y è un array di 4 vettori, uno per ciascuna antenna
+            for p = 1 : n_antennas
+			    temp = decimate(y(:,p), downsample_array(m), 128, "fir"); %effettuo la decimazione
+	            y_ds_cell{y_ds_row,1}(1:length(temp),p) = temp; %salvo il l'uscita dell'antenna decimata nel dataset
+            end
+		    
+            y_ds_cell{y_ds_row,2} = azimuth_angle;
+            azimuth_angle = azimuth_angle + azimuth_step; %incremento l'angolo
+            y_ds_row = y_ds_row + 1;
+        end
+    end
+end
+
 
 %ciclo la generazione per ciascuna delle dimensioni di snr_length
 for n = 1 : snr_length
@@ -116,11 +145,12 @@ for n = 1 : snr_length
         for m = 1 : n_scenarios
             azimuth_angle = azimuth_start; %imposto l'angolo di partenza per la chirp in questione
             
-            %spazzo tutto il range di angoli
+            %spazzo tutto il range di angoli del segnale utile
             for i = 1 : incidentAngleSteps+1
                 incidentAngle = [azimuth_angle;elevation_angle];
                 azimuth_angle_j = azimuth_start_j;
-                j_reduced = 1;
+                
+                %spazzo tutto il range di angoli del segnale interferente
                 for j = 1 : incidentAngleSteps_j+1
                     
                     incidentAngle_j = [azimuth_angle_j;elevation_angle_j];
@@ -136,14 +166,13 @@ for n = 1 : snr_length
                         %ciclo per il numero di antenne, poiché y è un array di 4 vettori, uno per ciascuna antenna
                         for p = 1 : n_antennas
 			                temp = decimate(y(:,p), downsample_array(m), 128, "fir"); %effettuo la decimazione
-                            y_ds_row = (n-1)*n_sin_jammers*(n_scenarios)*(incidentAngleSteps+1)*incidentAngleSteps_reduced_j+...
-                            (l-1)*(n_scenarios)*(incidentAngleSteps+1)*incidentAngleSteps_reduced_j + (m-1)*(incidentAngleSteps+1)*incidentAngleSteps_reduced_j+(i-1)*incidentAngleSteps_reduced_j+j_reduced;
-	                        y_ds_cell{y_ds_row,1}(1:length(temp),p) = temp; %salvo il l'uscita dell'antenna decimata nel dataset
+                            y_ds_cell{y_ds_row,1}(1:length(temp),p) = temp; %salvo il l'uscita dell'antenna decimata nel dataset
                         end
-                        j_reduced = j_reduced+1;
+
                         y_ds_cell{y_ds_row,2} = azimuth_angle;
                         y_ds_cell{y_ds_row,3} = azimuth_angle_j;
                         y_ds_cell{y_ds_row,4} = sin_jammer_freq(l);
+                        y_ds_row = y_ds_row + 1;
                     end
                     azimuth_angle_j = azimuth_angle_j + azimuth_step_j; %incremento l'angolo
                 end
