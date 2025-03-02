@@ -7,33 +7,32 @@ n_antennas = 4;
 % Element and ArrayAxis are kept default. Defaul element is Isoctropic,
 % default axis is "y". Axis is important to correctly set azimuth angle.
 
-myArray = phased.ULA("NumElements",n_antennas,"ElementSpacing",lambda/2);
+db4ra_ula = phased.ULA("NumElements",n_antennas,"ElementSpacing",lambda/2);
 ModulatedInputCtrl = true; %Set this property to true to indicate the input signal is demodulated at a carrier frequency.
 
 CollectorCarrierFrequency = fc;
 CollectorSampleRate = 2e9; %samplerate set equal to electra mx2 target throughput = 2 Gsamples
 CollectorNumSubbands = 10000;
 
-collector = phased.WidebandCollector("CarrierFrequency",CollectorCarrierFrequency, ...
-    "ModulatedInput",ModulatedInputCtrl,"SampleRate",CollectorSampleRate, "Sensor",myArray, "NumSubbands",CollectorNumSubbands);
+db4ra_collector = phased.WidebandCollector("CarrierFrequency",CollectorCarrierFrequency, ...
+    "ModulatedInput",ModulatedInputCtrl,"SampleRate",CollectorSampleRate, "Sensor",db4ra_ula, "NumSubbands",CollectorNumSubbands);
 
 %genero l'asse dei tempi per la chirp, di durata 100 us
-sample_width = 100e-6; %100 us length of chirp
+sample_width = 100e-6; %100 us LENGTH OF CHIRP SIGNAL
+
 sample_length = sample_width * CollectorSampleRate;
 t = (0:sample_length-1)/CollectorSampleRate;
 
+%++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ 
+%+++++++++++++++ SEZIONE SEGNALE UTILE ++++++++++++++++++++++++++++++++++
+%++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+% PARAMETRI DI CONFIGURAZIONE DEL SEGNALE UTILE
 %imposto frequenza di start e stop della chirp di riferimento
 f_start = 0;
-f_stop_array  = [150 50 25 10 5]*1e6;
-f_stop_array  = [150 50]*1e6;
-downsample_array = [6 18 36 90 180];
 
-n_scenarios = length(f_stop_array);
-oversampling_factor = zeros(1,n_scenarios);
+oversampling_factor = (CollectorSampleRate./(2*downsample_array.*f_stop_array)) - 1; %fattore di oversampling, calcolato per ciascuna chirp. deve essere uguale per tutte
 
-for i = 1 : n_scenarios
-	oversampling_factor(i) = (2e9/downsample_array(i))/(2*f_stop_array(i)) - 1; 
-end
+n_scenarios = length(f_stop_array); %NUMERO DI FREQUENZE UTILIZZATE PER GENERARE LE VARIE CHIRP
 
 % genero un'array chirp che in 100 us passa linearmente da 0 alla frequenza target
 x_array = zeros(n_scenarios,sample_length);
@@ -41,67 +40,91 @@ for i = 1 : n_scenarios
 	x_array(i,:) = chirp(t,f_start,t(end),f_stop_array(i));
 end
 
-sin_jammer_freq = [100 35]*1e6;
-n_sin_jammers = length(sin_jammer_freq);
+%VARIABILI PER GLI ANGOLI AZIMUTH CHE IL SEGNALE UTILE SPAZZA
+% il segnale utile si muoverà per ogni iterazione dall'angolo azimuth_start
+% all'angolo azimuth_stop, con un incremento pari ad azimuth_step
+
+%sezione relativa alla porzione di dataset "without jammer" 
+azimuth_start_woj = -60; % degrees
+azimuth_stop_woj  = 60; % degrees
+azimuth_step_woj = 2; % degrees. Qualsiasi valore reale maggiore di zero è valido per questo paramentro
+elevation_angle_woj = 0; % tied constant
+azimuth_angles_steps_woj = floor((azimuth_stop_woj-azimuth_start_woj)/azimuth_step_woj); %numero di step necessari per spazzare il range configurato
+
+%sezione relativa alla porzione di dataset "with jammer" 
+azimuth_start_wj = -60; % degrees
+azimuth_stop_wj  = 60; % degrees
+azimuth_step_wj = 2; % degrees. Qualsiasi valore reale maggiore di zero è valido per questo paramentro
+elevation_angle = 0; % tied constant
+azimuth_angles_steps_wj = floor((azimuth_stop_wj-azimuth_start_wj)/azimuth_step_wj); %numero di step necessari per spazzare il range configurato
+
+%++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ 
+%+++++++++++++++ FINE SEZIONE SEGNALE UTILE +++++++++++++++++++++++++++++
+%++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+
+%++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ 
+%+++++++++++++++ SEZIONE INTERFERENTE +++++++++++++++++++++++++++++++++++
+%++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+%JAMMER SECTION
+%definisco le frequenze dei jammer sinusoidali
+n_sin_jammers = 4;
+sin_jammer_freq = ((1:n_sin_jammers)- 0.5)/n_sin_jammers; %[Hz] FREQUENZE JAMMER
+
 
 %%
-% In questa porzione di codice genero un database con cinque
-% segnali chirp diversi. Ciascuna chirp stimola l'array di antenne con 121
-% angoli di incidenza diversa, da -60° a + 60° con step 1°.
-% NB: questa configurazione è il default, il range di angoli e anche lo
-% step sono diversamente configurabili
-% L'antenna produce 4 vettori di segnali complessi per ciascun segnale con cui viene stimolata
-% Il numero di chirp utilizzati è descritto dalla variabile "n_scenarios"
-% Le varie chirp sono generate utilizzando una frequenza di campionamento
-% di 2 GHz. Con tale frequenza di campionamento vengono mandate in input
-% all'antenna. I segnali vengono successivamente filtrati e
-% sottocampionati. Il sottocampionamento è tale per cui il rapporto tra la
-% frequenza di campionamento e la banda bilatera della chirp è 11/9. 
-% Esempio: chirp lineare da 0 Hz a 150 MHz, banda bilatera ad RF = 300 MHz (5,25 GHz - 5,55 GHz). Frequenza di
-% campionamento dopo downsampling = 333 MHz
-% Il downsampling viene effettuato utilizzando un fir 128 taps con
-% coefficienti reali.
 
+%VARIABILI PER GLI ANGOLI AZIMUTH CHE IL SEGNALE INTERFERENTE SPAZZA
+% il segnale interferente si muoverà per ogni iterazione dall'angolo
+% azimuth_start_j all'angolo azimuth_stop_j, con un incremento pari ad
+% azimuth_step_j. Non tutto il range però è disponibile: l'interferente si
+% deve trovare ad almeno +-20° di distanza dal segnale utile. La variabile
+% azimuth_angles_steps_reduced_j conta il numero effettivo di combinazioni
+% dell'angolo dell'interfente per ciascun angolo del segnale utile, sulla
+% base dei parametri di configurazione
+azimuth_start_j = -80; % degrees
+azimuth_stop_j  = 80; % degrees
+azimuth_step_j = 1; % degrees. Qualsiasi valore reale maggiore di zero è valido per questo paramentro
+elevation_angle_j = 0; % tied constant
 
-%definisco delle variabili per gli angoli
-azimuth_start = -30; % degrees
-azimuth_stop  = 30; % degrees
-azimuth_angle = azimuth_start; % spanning between +60 and -60
-elevation_angle = 0; % tied constant
-azimuth_step = 2; % degrees. Qualsiasi valore reale maggiore di zero è valido per questo paramentro
-incidentAngle = [azimuth_angle;elevation_angle];
-incidentAngleSteps = floor((azimuth_stop-azimuth_start)/azimuth_step);
+t2j_distance = 20; %degrees: target to jammer distance
 
+azimuth_angles_steps_j = floor((azimuth_stop_j-azimuth_start_j)/azimuth_step_j); %numero di step necessari per spazzare il range configurato
+azimuth_angles_steps_reduced_j = floor(((azimuth_stop_j-t2j_distance)-(azimuth_start_j+t2j_distance))/azimuth_step_j); %numero di step possibili a causa della limitazione tra angolo di interferente e jammer
+
+%++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ 
+%+++++++++++++++ FINE SEZIONE INTERFERENTE ++++++++++++++++++++++++++++++
+%++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+%++++++++++++++ SEZIONE RUMORE ++++++++++++++++++++++++++++++++++++++++++
 %inizializzo un rumore
 snr = [30]; %dB array di rapporti snr
 snr_length = length(snr);
-P_chirp = (x_array(1,:)*(x_array(1,:))')/sample_length; %si utilizza come riferimento del rapporto segnale rumore, la potenza della chirp a 150 MHz
+P_chirp = (x_array(1,:)*(x_array(1,:))')/sample_length; %si utilizza come riferimento del rapporto segnale rumore, la potenza della chirp all'indice 1 del chirp array
+%++++++++++++++ FINE SEZIONE RUMORE +++++++++++++++++++++++++++++++++++++
 
-%JAMMER SECTION
-%definisco delle variabili per gli angoli
-azimuth_start_j = -50; % degrees
-azimuth_stop_j  = 50; % degrees
-azimuth_angle_j = azimuth_start; % spanning between +60 and -60
-elevation_angle_j = 0; % tied constant
-azimuth_step_j = 1; % degrees. Qualsiasi valore reale maggiore di zero è valido per questo paramentro
-incidentAngle_j = [azimuth_angle_j;elevation_angle_j];
-incidentAngleSteps_j = floor((azimuth_stop_j-azimuth_start_j)/azimuth_step_j);
-incidentAngleSteps_reduced_j = floor(((azimuth_stop_j-20)-(azimuth_start_j+20))/azimuth_step_j);
+%%
 
-% Inizializzo un cell array con due colonne: la prima con le uscite dell'antenna sottocampionate
-% e la seconda con l'angolo di incidenza della chirp. La colonna ha lunghezza pari a snr_length*n_scenarios*(incidentAngleSteps+1)
-% e contiene tutti i sample di ciascuna chirp, che incide sull'antenna con un numero di angoli pari a 
-% "incidentAngleSteps+1". Se la variabile "snr" è un vettore, lo stessa popolazione del dataset
-% verrà raccolta con i vari snr impostati
+% In questa porzione di codice genero il dataset
 
 %inizializzo il cell array
 %la lunghezza di ciascun segnale è pari a sample_length diviso il fattore
 %di sottocampionamento della chirp a 150 MHz. tutti i segnali sono adeguati
 %a questa trama, essendo il vettore più lungo
-n_dataset_samples = snr_length*n_scenarios*(incidentAngleSteps+1)*(1 + incidentAngleSteps_reduced_j*n_sin_jammers);
-y_ds_cell = cell(n_dataset_samples, 4);
+n_dataset_samples_woj = snr_length*n_scenarios*(azimuth_angles_steps_woj+1);
+n_dataset_samples_wj = snr_length*n_scenarios*(azimuth_angles_steps_wj+1)*(1 + azimuth_angles_steps_reduced_j*n_sin_jammers);
+n_dataset_samples = n_dataset_samples_woj + n_dataset_samples_wj;
+
+y_ds_cell = cell(n_dataset_samples, 5);
+
 for i = 1 : n_dataset_samples
     y_ds_cell{i,1} = zeros(ceil((sample_length)/downsample_array(1)), n_antennas); 
+end
+
+for i = 1 : n_dataset_samples_woj
+    y_ds_cell{i,3} = 0;
+    y_ds_cell{i,4} = 0; 
+    y_ds_cell{i,5} = 0; 
 end
 
 enable_jammer_jitter = 0;
@@ -113,14 +136,14 @@ for n = 1 : snr_length
     noise_variance = P_chirp/(10^(snr(n)/10));%imposto la varianza del rumore sulla base dell'snr di riferimento
     % ciclo for per tutti gli scenari
     for m = 1 : n_scenarios
-        azimuth_angle = azimuth_start; %imposto l'angolo di partenza per la chirp in questione
+        azimuth_angle = azimuth_start_woj; %imposto l'angolo di partenza per la chirp in questione
         
         %spazzo tutto il range di angoli
-        for i = 1 : incidentAngleSteps+1
+        for i = 1 : azimuth_angles_steps_woj+1
             incidentAngle = [azimuth_angle;elevation_angle];
             noise = randn(sample_length, 1)*sqrt(noise_variance); %genero un vettore di rumore per ogni iterazione
     
-            y = collector((x_array(m,:))' + noise,incidentAngle); %calcolo l'uscita delle antenne della chirp che incide con l'angolo definito da incident angle
+            y = db4ra_collector((x_array(m,:))' + noise,incidentAngle); %calcolo l'uscita delle antenne della chirp che incide con l'angolo definito da incident angle
             
             %ciclo per il numero di antenne, poiché y è un array di 4 vettori, uno per ciascuna antenna
             for p = 1 : n_antennas
@@ -129,7 +152,7 @@ for n = 1 : snr_length
             end
 		    
             y_ds_cell{y_ds_row,2} = azimuth_angle;
-            azimuth_angle = azimuth_angle + azimuth_step; %incremento l'angolo
+            azimuth_angle = azimuth_angle + azimuth_step_woj; %incremento l'angolo
             y_ds_row = y_ds_row + 1;
         end
     end
@@ -143,15 +166,15 @@ for n = 1 : snr_length
     % ciclo for per tutti gli scenari
     for l = 1 : n_sin_jammers
         for m = 1 : n_scenarios
-            azimuth_angle = azimuth_start; %imposto l'angolo di partenza per la chirp in questione
+            azimuth_angle = azimuth_start_wj; %imposto l'angolo di partenza per la chirp in questione
             
             %spazzo tutto il range di angoli del segnale utile
-            for i = 1 : incidentAngleSteps+1
+            for i = 1 : azimuth_angles_steps_wj+1
                 incidentAngle = [azimuth_angle;elevation_angle];
                 azimuth_angle_j = azimuth_start_j;
                 
                 %spazzo tutto il range di angoli del segnale interferente
-                for j = 1 : incidentAngleSteps_j+1
+                for j = 1 : azimuth_angles_steps_j+1
                     
                     incidentAngle_j = [azimuth_angle_j;elevation_angle_j];
                     
@@ -160,8 +183,8 @@ for n = 1 : snr_length
                         noise_j = randn(sample_length, 1)*sqrt(noise_variance);
         
                         target = (x_array(m,:))' + noise;
-                        jammer = sin(2*pi*sin_jammer_freq(l)*(t')+2*pi*rand*enable_jammer_jitter) + noise_j;
-                        y = collector([target,jammer],[incidentAngle,incidentAngle_j]); %calcolo l'uscita delle antenne della chirp che incide con l'angolo definito da incident angle
+                        jammer = sin(2*pi*sin_jammer_freq(l)*f_stop_array(m)*(t')+2*pi*rand*enable_jammer_jitter) + noise_j;
+                        y = db4ra_collector([target,jammer],[incidentAngle,incidentAngle_j]); %calcolo l'uscita delle antenne della chirp che incide con l'angolo definito da incident angle
                         
                         %ciclo per il numero di antenne, poiché y è un array di 4 vettori, uno per ciascuna antenna
                         for p = 1 : n_antennas
@@ -171,12 +194,13 @@ for n = 1 : snr_length
 
                         y_ds_cell{y_ds_row,2} = azimuth_angle;
                         y_ds_cell{y_ds_row,3} = azimuth_angle_j;
-                        y_ds_cell{y_ds_row,4} = sin_jammer_freq(l);
+                        y_ds_cell{y_ds_row,4} = sin_jammer_freq(l)*f_stop_array(m);
+                        y_ds_cell{y_ds_row,5} = 1; 
                         y_ds_row = y_ds_row + 1;
                     end
                     azimuth_angle_j = azimuth_angle_j + azimuth_step_j; %incremento l'angolo
                 end
-                azimuth_angle = azimuth_angle + azimuth_step; %incremento l'angolo
+                azimuth_angle = azimuth_angle + azimuth_step_wj; %incremento l'angolo
             end
         end
     end
