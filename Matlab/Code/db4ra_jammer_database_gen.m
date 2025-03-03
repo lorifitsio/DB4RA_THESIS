@@ -29,6 +29,8 @@ t = (0:sample_length-1)/CollectorSampleRate;
 % PARAMETRI DI CONFIGURAZIONE DEL SEGNALE UTILE
 %imposto frequenza di start e stop della chirp di riferimento
 f_start = 0;
+f_stop_array  = [150 50 25 10 5]*1e6;
+downsample_array = [6 18 36 90 180];
 
 oversampling_factor = (CollectorSampleRate./(2*downsample_array.*f_stop_array)) - 1; %fattore di oversampling, calcolato per ciascuna chirp. deve essere uguale per tutte
 
