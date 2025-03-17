@@ -132,6 +132,16 @@ for i = 1 : n_dataset_samples_woj
     y_ds_cell{i,5} = 0; 
 end
 
+fir_taps = 128;
+fir_coeffs = zeros (n_scenarios, fir_taps+1);
+
+for i = 1 : n_scenarios
+    %fir_coeffs(i,:) = fir1(fir_taps,f_stop_array(i)*2/CollectorSampleRate);%frequenza di taglio
+                                                                            %impostata alla massima freqeunza della chirp 
+    fir_coeffs(i,:) = fir1(fir_taps, 1/downsample_array(i));                %frequenza di taglio impostata a f_sampling/2, dove f_sampling 
+                                                                            % è la frequenza di campionamento dopo il sottocampionamento
+end
+
 enable_jammer_jitter = 0;
 y_ds_row = 1;
 
@@ -142,7 +152,6 @@ for n = 1 : snr_length
     % ciclo for per tutti gli scenari
     for m = 1 : n_scenarios
         azimuth_angle = azimuth_start_woj; %imposto l'angolo di partenza per la chirp in questione
-        fir_coeffs = fir1(128, f_stop_array(m)*2/CollectorSampleRate);
         %spazzo tutto il range di angoli
         for i = 1 : azimuth_angles_steps_woj+1
             incidentAngle = [azimuth_angle;elevation_angle];
@@ -152,7 +161,7 @@ for n = 1 : snr_length
             
             %ciclo per il numero di antenne, poiché y è un array di 4 vettori, uno per ciascuna antenna
             for p = 1 : n_antennas
-			    temp = downsample(conv(y(:,p),fir_coeffs,'same'), downsample_array(1)); %effettuo la decimazione
+		    temp = downsample(conv(y(:,p),fir_coeffs(m,:),'same'), downsample_array(1)); %effettuo la decimazione
 	            y_ds_cell{y_ds_row,1}(:,p) = temp; %salvo il l'uscita dell'antenna decimata nel dataset
             end
 		    
@@ -173,7 +182,6 @@ for n = 1 : snr_length
         for m = 1 : n_scenarios
             azimuth_angle = azimuth_start_wj; %imposto l'angolo di partenza per la chirp in questione
             
-            fir_coeffs = fir1(128, f_stop_array(m)*2/CollectorSampleRate);
             %spazzo tutto il range di angoli del segnale utile
             for i = 1 : azimuth_angles_steps_wj+1
                 incidentAngle = [azimuth_angle;elevation_angle];
@@ -189,18 +197,18 @@ for n = 1 : snr_length
                         noise_j = randn(sample_length, 1)*sqrt(noise_variance);
         
                         target = (x_array(m,:))' + noise;
-                        jammer = sin(2*pi*sin_jammer_freq(l)*f_stop_array(m)*(t')+2*pi*rand*enable_jammer_jitter) + noise_j;
+                        jammer = sin(2*pi*sin_jammer_freq(l)*f_stop_array(1)*(t')+2*pi*rand*enable_jammer_jitter) + noise_j;
                         y = db4ra_collector([target,jammer],[incidentAngle,incidentAngle_j]); %calcolo l'uscita delle antenne della chirp che incide con l'angolo definito da incident angle
                         
                         %ciclo per il numero di antenne, poiché y è un array di 4 vettori, uno per ciascuna antenna
                         for p = 1 : n_antennas
-			                temp = downsample(conv(y(:,p),fir_coeffs,'same'), downsample_array(1)); %effettuo la decimazione
+			    temp = downsample(conv(y(:,p),fir_coeffs(m,:),'same'), downsample_array(1)); %effettuo la decimazione
                             y_ds_cell{y_ds_row,1}(:,p) = temp; %salvo il l'uscita dell'antenna decimata nel dataset
                         end
 
                         y_ds_cell{y_ds_row,2} = azimuth_angle;
                         y_ds_cell{y_ds_row,3} = azimuth_angle_j;
-                        y_ds_cell{y_ds_row,4} = sin_jammer_freq(l)*f_stop_array(m);
+                        y_ds_cell{y_ds_row,4} = sin_jammer_freq(l)*f_stop_array(1);
                         y_ds_cell{y_ds_row,5} = 1; 
                         y_ds_row = y_ds_row + 1;
                     end
