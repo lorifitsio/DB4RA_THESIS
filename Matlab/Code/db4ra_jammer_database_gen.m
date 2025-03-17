@@ -32,6 +32,9 @@ f_start = 0;
 f_stop_array  = [150 50 25 10 5]*1e6;
 downsample_array = [6 18 36 90 180];
 
+f_stop_array  = [150 50]*1e6;
+downsample_array = [6 18];
+
 oversampling_factor = (CollectorSampleRate./(2*downsample_array.*f_stop_array)) - 1; %fattore di oversampling, calcolato per ciascuna chirp. deve essere uguale per tutte
 
 n_scenarios = length(f_stop_array); %NUMERO DI FREQUENZE UTILIZZATE PER GENERARE LE VARIE CHIRP
@@ -56,7 +59,7 @@ azimuth_angles_steps_woj = floor((azimuth_stop_woj-azimuth_start_woj)/azimuth_st
 %sezione relativa alla porzione di dataset "with jammer" 
 azimuth_start_wj = -60; % degrees
 azimuth_stop_wj  = 60; % degrees
-azimuth_step_wj = 2; % degrees. Qualsiasi valore reale maggiore di zero è valido per questo paramentro
+azimuth_step_wj = 4; % degrees. Qualsiasi valore reale maggiore di zero è valido per questo paramentro
 elevation_angle = 0; % tied constant
 azimuth_angles_steps_wj = floor((azimuth_stop_wj-azimuth_start_wj)/azimuth_step_wj); %numero di step necessari per spazzare il range configurato
 
@@ -70,11 +73,8 @@ azimuth_angles_steps_wj = floor((azimuth_stop_wj-azimuth_start_wj)/azimuth_step_
 %++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 %JAMMER SECTION
 %definisco le frequenze dei jammer sinusoidali
-n_sin_jammers = 4;
+n_sin_jammers = 2;
 sin_jammer_freq = ((1:n_sin_jammers)- 0.5)/n_sin_jammers; %[Hz] FREQUENZE JAMMER
-
-
-%%
 
 %VARIABILI PER GLI ANGOLI AZIMUTH CHE IL SEGNALE INTERFERENTE SPAZZA
 % il segnale interferente si muoverà per ogni iterazione dall'angolo
@@ -86,7 +86,7 @@ sin_jammer_freq = ((1:n_sin_jammers)- 0.5)/n_sin_jammers; %[Hz] FREQUENZE JAMMER
 % base dei parametri di configurazione
 azimuth_start_j = -80; % degrees
 azimuth_stop_j  = 80; % degrees
-azimuth_step_j = 1; % degrees. Qualsiasi valore reale maggiore di zero è valido per questo paramentro
+azimuth_step_j = 2; % degrees. Qualsiasi valore reale maggiore di zero è valido per questo paramentro
 elevation_angle_j = 0; % tied constant
 
 t2j_distance = 20; %degrees: target to jammer distance
@@ -106,6 +106,9 @@ P_chirp = (x_array(1,:)*(x_array(1,:))')/sample_length; %si utilizza come riferi
 %++++++++++++++ FINE SEZIONE RUMORE +++++++++++++++++++++++++++++++++++++
 
 %%
+%CODICE VERSIONE 2.0: IL DATASET NON E' PIU' COMPOSTO DA SEGNALI CON
+%SOTTOCAMPIONAMENTO DIVERSO. IL SOTTOCAMPIONAMENTO E' UNICO, MA I CANALI
+%VENGONO OPPORTUNAMENTE FILTRATI SULLA BASE DELLA FREQUENZA DELLA CHIRP
 
 % In questa porzione di codice genero il dataset
 
@@ -139,7 +142,7 @@ for n = 1 : snr_length
     % ciclo for per tutti gli scenari
     for m = 1 : n_scenarios
         azimuth_angle = azimuth_start_woj; %imposto l'angolo di partenza per la chirp in questione
-        
+        fir_coeffs = fir1(128, f_stop_array(m)*2/CollectorSampleRate);
         %spazzo tutto il range di angoli
         for i = 1 : azimuth_angles_steps_woj+1
             incidentAngle = [azimuth_angle;elevation_angle];
@@ -149,8 +152,8 @@ for n = 1 : snr_length
             
             %ciclo per il numero di antenne, poiché y è un array di 4 vettori, uno per ciascuna antenna
             for p = 1 : n_antennas
-			    temp = decimate(y(:,p), downsample_array(m), 128, "fir"); %effettuo la decimazione
-	            y_ds_cell{y_ds_row,1}(1:length(temp),p) = temp; %salvo il l'uscita dell'antenna decimata nel dataset
+			    temp = downsample(conv(y(:,p),fir_coeffs,'same'), downsample_array(1)); %effettuo la decimazione
+	            y_ds_cell{y_ds_row,1}(:,p) = temp; %salvo il l'uscita dell'antenna decimata nel dataset
             end
 		    
             y_ds_cell{y_ds_row,2} = azimuth_angle;
@@ -170,6 +173,7 @@ for n = 1 : snr_length
         for m = 1 : n_scenarios
             azimuth_angle = azimuth_start_wj; %imposto l'angolo di partenza per la chirp in questione
             
+            fir_coeffs = fir1(128, f_stop_array(m)*2/CollectorSampleRate);
             %spazzo tutto il range di angoli del segnale utile
             for i = 1 : azimuth_angles_steps_wj+1
                 incidentAngle = [azimuth_angle;elevation_angle];
@@ -190,8 +194,8 @@ for n = 1 : snr_length
                         
                         %ciclo per il numero di antenne, poiché y è un array di 4 vettori, uno per ciascuna antenna
                         for p = 1 : n_antennas
-			                temp = decimate(y(:,p), downsample_array(m), 128, "fir"); %effettuo la decimazione
-                            y_ds_cell{y_ds_row,1}(1:length(temp),p) = temp; %salvo il l'uscita dell'antenna decimata nel dataset
+			                temp = downsample(conv(y(:,p),fir_coeffs,'same'), downsample_array(1)); %effettuo la decimazione
+                            y_ds_cell{y_ds_row,1}(:,p) = temp; %salvo il l'uscita dell'antenna decimata nel dataset
                         end
 
                         y_ds_cell{y_ds_row,2} = azimuth_angle;

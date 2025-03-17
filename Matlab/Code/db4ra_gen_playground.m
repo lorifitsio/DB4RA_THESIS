@@ -53,7 +53,7 @@ elevation_angle = 0; % tied constant
 incidentAngle = [azimuth_angle;elevation_angle];
 
 %imposto quale dei cinque scenari utilizzare in questo esempio: s = 1 --> 150 MHz, s = 5 --> 5 MHz
-s = 1;
+s = 5;
 
 %inizializzo un rumore
 %uso come potenza di segnale utile la potenza della chirp a 150 MHz
@@ -62,13 +62,15 @@ P_chirp = (x_array(1,:)*(x_array(1,:))')/sample_length;
 noise_variance = P_chirp/(10^(snr/10));
 
 %inizializzo il vettore sottocampionato
-y_ds = zeros(ceil((sample_length)/downsample_array(s)), n_antennas); 
+y_ds = zeros(ceil((sample_length)/downsample_array(1)), n_antennas); 
 
 % genero l'uscita dell'antenna y e la sua versione sotto campionata
 noise = randn(sample_length, 1)*sqrt(noise_variance);
 y = collector((x_array(s,:))' + noise,incidentAngle); %calcolo l'uscita delle antenne della chirp che incide con l'angolo definito da incident angle
+fir_coeffs = fir1(128, f_stop_array(1)*2/CollectorSampleRate);
+        
 for p = 1 : n_antennas
-    y_ds(:,p) = decimate(y(:,p), downsample_array(s), 128, "fir"); 
+    y_ds(:,p) = downsample(conv(y(:,p),fir_coeffs,'same'), downsample_array(1));
 end
 
 %%
@@ -114,14 +116,14 @@ incidentAngle = [azimuth_angle;elevation_angle];
 
 %JAMMER SECTION
 %definisco delle variabili per gli angoli
-azimuth_angle_j = -43; % degrees
+azimuth_angle_j = -40; % degrees
 elevation_angle_j = 0; % tied constant
 incidentAngle_j = [azimuth_angle_j;elevation_angle_j];
 sin_jammer_freq = [100]*1e6;
 enable_jammer_jitter = 0;
 
 %imposto quale dei cinque scenari utilizzare in questo esempio: s = 1 --> 150 MHz, s = 5 --> 5 MHz
-s = 1;
+s = 5;
 j = 1;
 
 %inizializzo un rumore
@@ -137,8 +139,17 @@ y_ds = zeros(ceil((sample_length)/downsample_array(s)), n_antennas);
 noise = randn(sample_length, 1)*sqrt(noise_variance);
 noise_j = randn(sample_length, 1)*sqrt(noise_variance);
 
+
 target = (x_array(s,:))' + noise;
 jammer = sin(2*pi*sin_jammer_freq(j)*(t')+2*pi*rand*enable_jammer_jitter) + noise_j;
+sample_width_sweptcw = 1.5e-3; %1.5 ms LENGTH OF CHIRP SIGNAL
+
+sample_length_sweptcw = sample_width_sweptcw * CollectorSampleRate;
+t_sweptcw = (0:sample_length_sweptcw-1)/CollectorSampleRate;
+sweptcw = chirp(t_sweptcw,0,t_sweptcw(end),300e6); 
+
+jammer = sweptcw(1:sample_length)';
+
 y = collector([target,jammer],[incidentAngle,incidentAngle_j]); %calcolo l'uscita delle antenne della chirp che incide con l'angolo definito da incident angle
 
 for p = 1 : n_antennas
@@ -151,12 +162,20 @@ beamformer = phased.SubbandPhaseShiftBeamformer('SensorArray',myArray, ...
     'WeightsOutputPort',true);
 [z,w,subbandfreq] = beamformer(y);
 
-pattern(myArray,subbandfreq(1:10).',[-180:180],0, ...
-    'CoordinateSystem','rectangular','Weights',w(:,1:10))
+pattern(myArray,subbandfreq(1:25).',[-180:180],0, ...
+    'CoordinateSystem','rectangular','Weights',w(:,1:25))
 legend('location','SouthEast')
 %%
+beamformer = phased.SubbandPhaseShiftBeamformer('SensorArray',myArray, ...
+    'Direction',incidentAngle,'OperatingFrequency',fc, ...
+    'SampleRate',CollectorSampleRate, 'NumSubbands', 100, 'SubbandsOutputPort',true, ...
+    'WeightsOutputPort',true);
 z_target = beamformer(y);
 
+beamformer = phased.SubbandPhaseShiftBeamformer('SensorArray',myArray, ...
+    'Direction',incidentAngle_j,'OperatingFrequency',fc, ...
+    'SampleRate',CollectorSampleRate, 'NumSubbands', 100, 'SubbandsOutputPort',true, ...
+    'WeightsOutputPort',true);
 z_jammer = beamformer(y);
 
 
@@ -205,6 +224,15 @@ ylabel('y [dB]')
 
 figure(10)
 spectrogram(z_jammer(:,1),[],[],[],"centered")
+
+%%
+figure(5)
+plot(f_ds,20*log10(abs(fft(y_ds(:,1))/max(abs(fft(y_ds(:,1)))))))
+xlabel('f [Hz]')
+ylabel('y ds [dB]')
+
+figure(6)
+spectrogram(y_ds(:,1),[],[],[],"centered")
 
 %%
 pattern(myArray,fc,[-180:180],0,'PropagationSpeed',3e8,'CoordinateSystem','rectangular','Type','powerdb')
