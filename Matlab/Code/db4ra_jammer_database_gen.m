@@ -52,14 +52,14 @@ end
 %sezione relativa alla porzione di dataset "without jammer" 
 azimuth_start_woj = -60; % degrees
 azimuth_stop_woj  = 60; % degrees
-azimuth_step_woj = 2; % degrees. Qualsiasi valore reale maggiore di zero è valido per questo paramentro
+azimuth_step_woj = 1; % degrees. Qualsiasi valore reale maggiore di zero è valido per questo paramentro
 elevation_angle_woj = 0; % tied constant
 azimuth_angles_steps_woj = floor((azimuth_stop_woj-azimuth_start_woj)/azimuth_step_woj); %numero di step necessari per spazzare il range configurato
 
 %sezione relativa alla porzione di dataset "with jammer" 
 azimuth_start_wj = -60; % degrees
 azimuth_stop_wj  = 60; % degrees
-azimuth_step_wj = 4; % degrees. Qualsiasi valore reale maggiore di zero è valido per questo paramentro
+azimuth_step_wj = 6; % degrees. Qualsiasi valore reale maggiore di zero è valido per questo paramentro
 elevation_angle = 0; % tied constant
 azimuth_angles_steps_wj = floor((azimuth_stop_wj-azimuth_start_wj)/azimuth_step_wj); %numero di step necessari per spazzare il range configurato
 
@@ -86,7 +86,7 @@ sin_jammer_freq = ((1:n_sin_jammers)- 0.5)/n_sin_jammers; %[Hz] FREQUENZE JAMMER
 % base dei parametri di configurazione
 azimuth_start_j = -80; % degrees
 azimuth_stop_j  = 80; % degrees
-azimuth_step_j = 2; % degrees. Qualsiasi valore reale maggiore di zero è valido per questo paramentro
+azimuth_step_j = 6; % degrees. Qualsiasi valore reale maggiore di zero è valido per questo paramentro
 elevation_angle_j = 0; % tied constant
 
 t2j_distance = 20; %degrees: target to jammer distance
@@ -117,7 +117,33 @@ P_chirp = (x_array(1,:)*(x_array(1,:))')/sample_length; %si utilizza come riferi
 %di sottocampionamento della chirp a 150 MHz. tutti i segnali sono adeguati
 %a questa trama, essendo il vettore più lungo
 n_dataset_samples_woj = snr_length*n_scenarios*(azimuth_angles_steps_woj+1);
-n_dataset_samples_wj = snr_length*n_scenarios*(azimuth_angles_steps_wj+1)*(1 + azimuth_angles_steps_reduced_j*n_sin_jammers);
+
+y_ds_row = 0;
+
+
+%ciclo la generazione per ciascuna delle dimensioni di snr_length
+for n = 1 : snr_length
+    % ciclo for per tutti gli scenari
+    for l = 1 : n_sin_jammers
+        for m = 1 : n_scenarios
+            azimuth_angle = azimuth_start_wj; %imposto l'angolo di partenza per la chirp in questione
+            %spazzo tutto il range di angoli del segnale utile
+            for i = 1 : azimuth_angles_steps_wj+1
+                azimuth_angle_j = azimuth_start_j;
+                %spazzo tutto il range di angoli del segnale interferente
+                for j = 1 : azimuth_angles_steps_j+1
+                    if ((azimuth_angle_j < (azimuth_angle - 20)) || (azimuth_angle_j > (azimuth_angle + 20)))
+                        y_ds_row = y_ds_row + 1;
+                    end
+                    azimuth_angle_j = azimuth_angle_j + azimuth_step_j; %incremento l'angolo
+                end
+                azimuth_angle = azimuth_angle + azimuth_step_wj; %incremento l'angolo
+            end
+        end
+    end
+end
+
+n_dataset_samples_wj = y_ds_row;
 n_dataset_samples = n_dataset_samples_woj + n_dataset_samples_wj;
 
 y_ds_cell = cell(n_dataset_samples, 5);
@@ -129,7 +155,7 @@ end
 for i = 1 : n_dataset_samples_woj
     y_ds_cell{i,3} = 0;
     y_ds_cell{i,4} = 0; 
-    y_ds_cell{i,5} = 0; 
+    y_ds_cell{i,5} = -1; % -1 if no jammer is present
 end
 
 fir_taps = 128;
@@ -208,7 +234,7 @@ for n = 1 : snr_length
 
                         y_ds_cell{y_ds_row,2} = azimuth_angle;
                         y_ds_cell{y_ds_row,3} = azimuth_angle_j;
-                        y_ds_cell{y_ds_row,4} = sin_jammer_freq(m)*f_stop_array(1);
+                        y_ds_cell{y_ds_row,4} = sin_jammer_freq(l)*f_stop_array(m);
                         y_ds_cell{y_ds_row,5} = 1; 
                         y_ds_row = y_ds_row + 1;
                     end
@@ -220,3 +246,5 @@ for n = 1 : snr_length
     end
 end
 
+%%
+save("ds_raw_1.5.2.5.mat","y_ds_cell", "-v7.3","-nocompression")
