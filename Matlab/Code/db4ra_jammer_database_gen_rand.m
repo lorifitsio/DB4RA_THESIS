@@ -119,30 +119,30 @@ P_chirp = (x_array(1,:)*(x_array(1,:))')/sample_length; %si utilizza come riferi
 %la lunghezza di ciascun segnale è pari a sample_length diviso il fattore
 %di sottocampionamento della chirp a 150 MHz. tutti i segnali sono adeguati
 %a questa trama, essendo il vettore più lungo
-n_dataset_samples_woj = 4000;
+n_dataset_samples_woj = 6000;
 
-n_chirp_angles = 12000;
-n_jammer_angles_per_chirp = 1;
+n_chirp_angles = 450;
+n_jammer_angles_per_chirp = 20;
 n_dataset_samples_wj = n_chirp_angles * n_jammer_angles_per_chirp;
 n_dataset_samples = snr_length * (n_dataset_samples_woj + n_dataset_samples_wj);
 
-y_ds_cell = cell(n_dataset_samples, 6);
+y_ds_cell = cell(n_dataset_samples, 3);
 
-for i = 1 : n_dataset_samples
-    y_ds_cell{i,1} = zeros(ceil((sample_length)/downsample_array(1)), n_antennas); 
-end
+signals = zeros (ceil((sample_length)/downsample_array(1)),n_antennas*2,1,n_dataset_samples);
+y_ds_temp = zeros (ceil((sample_length)/downsample_array(1)),n_antennas);
+doa = zeros(n_dataset_samples,1); %doa disturbo
+jam = zeros(n_dataset_samples,1); % presenza o meno di jammimg
 
 for i = 1 : n_dataset_samples_woj
-    y_ds_cell{i,4} = 0;
-    y_ds_cell{i,5} = 0; 
-    y_ds_cell{i,6} = -1; % -1 if no jammer is present
+    y_ds_cell{i,3} = 0;
+    jam(i) = -1; % -1 if no jammer is present
 end
 
 fir_taps = 128;
 fir_coeffs = zeros (n_scenarios, fir_taps+1);
 
 for i = 1 : n_scenarios
-    %fir_coeffs(i,:) = fir1(fir_taps,f_stop_array(i)*2/CollectorSampleRate);%frequenza di taglio
+    %fir_coeffs(i,:) = fir1(fir_taps,f_stop_array(i)*2/CollectorSampleRate); %frequenza di taglio
                                                                             %impostata alla massima freqeunza della chirp 
     fir_coeffs(i,:) = fir1(fir_taps, 1/downsample_array(i));                %frequenza di taglio impostata a f_sampling/2, dove f_sampling 
                                                                             % è la frequenza di campionamento dopo il sottocampionamento
@@ -172,11 +172,13 @@ for n = 1 : snr_length
 		%ciclo per il numero di antenne, poiché y è un array di 4 vettori, uno per ciascuna antenna
 		for p = 1 : n_antennas
 			temp = downsample(conv(y(:,p),fir_coeffs(chirp_sel,:),'same'), downsample_array(1)); %effettuo la decimazione
-			y_ds_cell{y_ds_row,1}(:,p) = temp; %salvo il l'uscita dell'antenna decimata nel dataset
+			y_ds_temp(:,p) = temp; %salvo il l'uscita dell'antenna decimata nel dataset
 		end
 		
-		y_ds_cell{y_ds_row,2} = azimuth_angle;
-		y_ds_cell{y_ds_row,3} = f_stop_array(chirp_sel);
+        signals(:,:,1,y_ds_row)=[real(y_ds_temp) imag(y_ds_temp)];
+
+		y_ds_cell{y_ds_row,1} = azimuth_angle;
+		y_ds_cell{y_ds_row,2} = f_stop_array(chirp_sel);
 		y_ds_row = y_ds_row + 1;
     end
 end
@@ -200,7 +202,13 @@ for n = 1 : snr_length
 		
 		sel = azimuth_angle_vector(m) <= azimuth_angle_vector_j;
 		azimuth_angle_vector_j(sel) = azimuth_angle_vector_j(sel) + t2j_distance+1;
-	
+
+        chirp_sel = randi([1 n_scenarios], 1, 1);
+        if (chirp_sel == 5) 
+	        jammer_freq = randi([1 f_stop_array(chirp_sel)/(1e6)], 1, 1) * (1e6);
+        else			
+	        jammer_freq = randi([f_stop_array(chirp_sel+1)/(1e6) f_stop_array(chirp_sel)/(1e6)], 1, 1) * (1e6);
+        end
 		%spazzo tutto il range di angoli del segnale utile
 		for i = 1 : n_jammer_angles_per_chirp
 			incidentAngle = [azimuth_angle;elevation_angle];
@@ -212,24 +220,24 @@ for n = 1 : snr_length
 			
 			noise = randn(sample_length, 1)*sqrt(noise_variance); %genero un vettore di rumore per ogni iterazione
 			noise_j = randn(sample_length, 1)*sqrt(noise_variance);
-			chirp_sel = randi([1 n_scenarios], 1, 1);
 			target = (x_array(chirp_sel,:))' + noise;
                         
-			jammer_freq = randi([1 f_stop_array(chirp_sel)], 1, 1);
 			jammer = sin(2*pi*jammer_freq*(t')+2*pi*rand*enable_jammer_jitter) + noise_j;
 			y = db4ra_collector([target,jammer],[incidentAngle,incidentAngle_j]); %calcolo l'uscita delle antenne della chirp che incide con l'angolo definito da incident angle
 			
 			%ciclo per il numero di antenne, poiché y è un array di 4 vettori, uno per ciascuna antenna
 			for p = 1 : n_antennas
 				temp = downsample(conv(y(:,p),fir_coeffs(chirp_sel,:),'same'), downsample_array(1)); %effettuo la decimazione
-				y_ds_cell{y_ds_row,1}(:,p) = temp; %salvo il l'uscita dell'antenna decimata nel dataset
+				y_ds_temp(:,p) = temp; %salvo il l'uscita dell'antenna decimata nel dataset
 			end
 
-			y_ds_cell{y_ds_row,2} = azimuth_angle;
-			y_ds_cell{y_ds_row,3} = f_stop_array(chirp_sel);
-			y_ds_cell{y_ds_row,4} = azimuth_angle_j;
-			y_ds_cell{y_ds_row,5} = jammer_freq;
-			y_ds_cell{y_ds_row,6} = 1; 
+            signals(:,:,1,y_ds_row)=[real(y_ds_temp) imag(y_ds_temp)];
+
+            y_ds_cell{y_ds_row,1} = azimuth_angle;
+		    y_ds_cell{y_ds_row,2} = f_stop_array(chirp_sel);
+        	doa(y_ds_row) = azimuth_angle_j;
+			y_ds_cell{y_ds_row,3} = jammer_freq;
+			jam(y_ds_row) = 1; 
 			y_ds_row = y_ds_row + 1;
 		end
     end
@@ -238,7 +246,7 @@ end
 %%
 err_count = 0;
 for i = (snr_length * n_dataset_samples_woj + 1) : (snr_length * n_dataset_samples_wj)
-    distance = abs(y_ds_cell{i,4} - y_ds_cell{i,2});
+    distance = abs(doa(i) - y_ds_cell{i,1});
     if (distance <= 20)
         err_count = err_count +1;
     end
@@ -259,5 +267,5 @@ err_count
     % end
 
 %%
-save("ds_rand_raw.mat","y_ds_cell", "-v7.3","-nocompression")
+save("ds_rand.mat","y_ds_cell", "doa", "jam", "signals","-v7.3","-nocompression")
 
