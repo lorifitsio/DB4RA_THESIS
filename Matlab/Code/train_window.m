@@ -1,3 +1,10 @@
+% IL SEGUENTE SCRIPT LAVORA SU UNA RETE CHE HA COME INGRESSO UNA MATRICE
+% 4096 X 8, SU UN DATASET DI 105'000 SAMPLE. IL DATASET E' COMPOSTO DA
+% 30'000 CAMPIONI SENZA INTERFERENTE E 75'000 CON INTERFERENTE (1'500 FREQUENZE * 50
+% ANGOLI)
+
+%IL DATASET DI RIFERIMENTO E' GENERATO DALLO SCRIPT train_window_squared
+
 clc; clear; close all;
 
 load ds_window.mat
@@ -6,11 +13,6 @@ load ds_window.mat
 Train_perc = 0.8; %percentage of dataset used for training
 Val_perc = 0.1; %percentage of dataset used for validation
 Test_perc = 0.1; %percentage of dataset used for test
-
-%% REMOVE "NO JAMMING" - EVENTUALMENTE DA RIMUOVERE
-% signals=signals(:,:,:,126:end);
-% doa=doa(126:end);
-% jam=jam(126:end);
 
 %% Dataset preparation
 
@@ -41,7 +43,7 @@ validationFrequency = floor(numel(doa_Train)/miniBatchSize);
 
 options = trainingOptions("rmsprop", ...
     MiniBatchSize=miniBatchSize, ...
-    MaxEpochs=100,...
+    MaxEpochs=35,...
     LearnRateSchedule="piecewise", ...
     InitialLearnRate=1e-3, ...
     LearnRateDropFactor=0.05, ...
@@ -57,6 +59,8 @@ options = trainingOptions("rmsprop", ...
 
 %% TRAINING
 net = trainnet(signals_Train,[doa_Train jam_Train],net,"mse",options);
+
+%%
 save (".\networks\trained\resnet18_mod0_window.mat","net");
 %% TESTING
 YTest = predict(net,signals_Test);
@@ -67,7 +71,7 @@ xlabel("Predicted Value")
 ylabel("True Value")
 
 hold on
-plot([-81 81], [-81 81],"r--")
+plot([-81 81]/10, [-81 81]/10,"r--")
 grid on
 grid minor
 
@@ -83,7 +87,28 @@ grid on
 grid minor
 
 RMSE_test_jam=rmse(YTest(:,1),jam_Test)
+%%
+hold off
+C = confusionmat(sign(jam_Test), double(sign(YTest(:,2))));
+confusionchart(C);
 
 %%
-exportNetworkToTensorFlow(net,"db4ara_resnet_nonorm")
+exportNetworkToTensorFlow(net,"db4ara_resnet_window")
 
+
+%% TESTING
+samples_with_jammer = jam_Test ==1;
+figure
+scatter(YTest((samples_with_jammer),1),doa_Test(samples_with_jammer),"+")
+xlabel("Predicted Value")
+ylabel("True Value")
+
+hold on
+plot([-81 81]/10, [-81 81]/10,"r--")
+grid on
+grid minor
+
+RMSE_test_doa=rmse(YTest((samples_with_jammer),1),doa_Test(samples_with_jammer))
+
+%%
+save (".\networks\trained\test_vectors.mat","jam_Test", "signals_Test", "doa_Test");

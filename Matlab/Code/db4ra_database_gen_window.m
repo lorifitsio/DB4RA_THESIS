@@ -109,10 +109,10 @@ P_chirp = (x_array(1,window_length:end-window_length+1)*(x_array(1,window_length
 %la lunghezza di ciascun segnale è pari a sample_length diviso il fattore
 %di sottocampionamento della chirp a 150 MHz. tutti i segnali sono adeguati
 %a questa trama, essendo il vettore più lungo
-n_dataset_samples_woj = 18000;
+n_dataset_samples_woj = 30000;
 
-n_chirp_angles = 1350;
-n_jammer_angles_per_chirp = 20;
+n_chirp_angles = 1500;
+n_jammer_angles_per_chirp = 50;
 n_dataset_samples_wj = n_chirp_angles * n_jammer_angles_per_chirp;
 n_dataset_samples = snr_length * (n_dataset_samples_woj + n_dataset_samples_wj);
 
@@ -237,6 +237,9 @@ for n = 1 : snr_length
 		end
     end
 end
+
+doa = doa / 10; %divido per normalizzare il dataset. ho provato a dividere per 100, in modo da avere angoli -1 < doa < 1
+                %ma empiricamente ho ottenuto risultati migliori con 10
 
 %%
 err_count = 0;
