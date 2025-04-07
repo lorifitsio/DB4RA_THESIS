@@ -132,9 +132,9 @@ fir_taps = 128;
 fir_coeffs = zeros (n_scenarios, fir_taps+1);
 
 for i = 1 : n_scenarios
-    %fir_coeffs(i,:) = fir1(fir_taps,f_stop_array(i)*2/CollectorSampleRate); %frequenza di taglio
+    fir_coeffs(i,:) = fir1(fir_taps,f_stop_array(i)*2/CollectorSampleRate); %frequenza di taglio
                                                                             %impostata alla massima freqeunza della chirp 
-    fir_coeffs(i,:) = fir1(fir_taps, 1/downsample_array(i));                %frequenza di taglio impostata a f_sampling/2, dove f_sampling 
+    %fir_coeffs(i,:) = fir1(fir_taps, 1/downsample_array(i));                %frequenza di taglio impostata a f_sampling/2, dove f_sampling 
                                                                             % è la frequenza di campionamento dopo il sottocampionamento
 end
 
