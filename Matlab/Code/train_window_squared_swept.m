@@ -4,16 +4,16 @@ clc; clear; close all;
 resize_dataset = true;
 
 if resize_dataset == true 
-    load ds_window_swept.mat
+    load ds_window_swept_new.mat
     signals_square = zeros(size(signals,1)/16, size(signals,2)*16, 1, size(signals,4));
     for i = 1 : size(signals,4)
         for m = 1 : 16 
             signals_square(:,(1+8*(m-1)):(8*m),1,i) = signals ((1+256*(m-1):256*(m)),:,1,i);
         end
     end
-    save ("ds_window_swept_squared.mat", "signals_square", "doa", "jam", "y_ds_cell", "-v7.3","-nocompression")
+    save ("ds_window_swept_new_squared.mat", "signals_square", "doa", "jam", "y_ds_cell", "-v7.3","-nocompression")
 else
-    load ds_window_swept_squared.mat
+    load ds_window_swept_new_squared.mat
 end
 %% CUSTOM SETTINGS
 Train_perc = 0.8; %percentage of dataset used for training
@@ -51,15 +51,16 @@ load .\networks\resnet18_nob5_256x128.mat
 %% Training preparation
 miniBatchSize  = 64;
 validationFrequency = floor(numel(doa_Train)/miniBatchSize);
-
+LearnRateDropPeriod = 8;
+MaxEpochs = LearnRateDropPeriod*4-1;
 
 options = trainingOptions("rmsprop", ...
     MiniBatchSize=miniBatchSize, ...
-    MaxEpochs=40,...
+    MaxEpochs=MaxEpochs,...
     LearnRateSchedule="piecewise", ...
     InitialLearnRate=1e-3, ...
     ... %LearnRateDropFactor=0.05, ...
-    LearnRateDropPeriod=6, ...
+    LearnRateDropPeriod=LearnRateDropPeriod, ...
     Shuffle="every-epoch", ...
     ValidationData={signals_Val,[doa_Val jam_Val]}, ...
     ValidationFrequency=validationFrequency, ...
@@ -72,32 +73,40 @@ options = trainingOptions("rmsprop", ...
 net = trainnet(signals_Train,[doa_Train jam_Train],net,"mse",options);
 
 %%
-save (".\networks\trained\db4ra_resnet18_256x128_swept.mat","net");
+save (".\networks\trained\db4ra_resnet18_256x128_swept_new.mat","net");
+
 %% TESTING
 YTest = predict(net,signals_Test);
 
+doa_Pred = YTest(:,1);
+doa_Pred_unnorm = doa_Pred *100 / 8;
+doa_Test_unnorm = doa_Test * 100 / 8;
+
+jam_Pred = YTest(:,2);
+
 figure
-scatter(YTest(:,1),doa_Test,"+")
+scatter(doa_Pred_unnorm,doa_Test_unnorm,"+")
 xlabel("Predicted Value")
 ylabel("True Value")
 
 hold on
-plot([-81 81]/10, [-81 81]/10,"r--")
+plot([-81 81], [-81 81],"r--")
 grid on
 grid minor
+hold off
 
-RMSE_test_doa=rmse(YTest(:,1),doa_Test)
+RMSE_test_doa=rmse(doa_Pred_unnorm,doa_Test_unnorm)
 
 figure
-scatter(sign(YTest(:,2)),sign(jam_Test),"+")
+scatter(sign(jam_Pred),sign(jam_Test),"+")
 xlabel("Predicted Value")
 ylabel("True Value")
 
 hold on
 grid on
 grid minor
-
-RMSE_test_jam=rmse(YTest(:,1),jam_Test)
+hold off
+RMSE_test_jam=rmse(jam_Pred,jam_Test)
 %%
 hold off
 figure

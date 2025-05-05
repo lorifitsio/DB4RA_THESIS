@@ -121,10 +121,10 @@ P_chirp = (x_array(1,window_length:end-window_length+1)*(x_array(1,window_length
 %la lunghezza di ciascun segnale è pari a sample_length diviso il fattore
 %di sottocampionamento della chirp a 150 MHz. tutti i segnali sono adeguati
 %a questa trama, essendo il vettore più lungo
-n_dataset_samples_woj = 25000;
+n_dataset_samples_woj = 250;
 
-n_chirp_angles = 1300;
-n_jammer_angles_per_chirp = 30;
+n_chirp_angles = 1000;
+n_jammer_angles_per_chirp = 1;
 n_dataset_samples_wj = n_chirp_angles * n_jammer_angles_per_chirp;
 n_dataset_samples = snr_length * (n_dataset_samples_woj + 2*n_dataset_samples_wj);
 
@@ -150,7 +150,7 @@ for i = 1 : n_scenarios
                                                                             % è la frequenza di campionamento dopo il sottocampionamento
 end
 
-enable_jammer_jitter = 0;
+enable_jammer_jitter = 1;
 y_ds_row = 1;
 
 %ciclo la generazione per ciascuna delle dimensioni di snr_length
@@ -186,7 +186,10 @@ for n = 1 : snr_length
     end
 end
 
-%%
+
+A_sin = 1;
+A_target = 1;
+
 %ciclo la generazione per ciascuna delle dimensioni di snr_length
 for n = 1 : snr_length
 
@@ -208,9 +211,11 @@ for n = 1 : snr_length
 
         chirp_sel = randi([1 n_scenarios], 1, 1);
         if (chirp_sel == 5) 
-	        jammer_freq = randi([2 f_stop_array(chirp_sel)/(1e6)], 1, 1) * (1e6);
+	        %jammer_freq = randi([2 f_stop_array(chirp_sel)/(1e6)], 1, 1) * (1e6);
+            jammer_freq = randi([1 f_stop_array(chirp_sel)/(1e6)], 1, 1) * (1e6);
         else			
-	        jammer_freq = randi([f_stop_array(chirp_sel+1)/(1e6) f_stop_array(chirp_sel)/(1e6)], 1, 1) * (1e6);
+	        %jammer_freq = randi([f_stop_array(chirp_sel+1)/(1e6) f_stop_array(chirp_sel)/(1e6)], 1, 1) * (1e6);
+            jammer_freq = randi([1 f_stop_array(chirp_sel)/(1e6)], 1, 1) * (1e6);
         end
 		%spazzo tutto il range di angoli del segnale utile
 		for i = 1 : n_jammer_angles_per_chirp
@@ -226,10 +231,11 @@ for n = 1 : snr_length
 		            
             noise_j = randn(window_length, 1)*sqrt(noise_variance);
 											
-			target = (x_array(chirp_sel,window_sel:window_sel+window_length-1))' + noise;
+			target = A_target*(x_array(chirp_sel,window_sel:window_sel+window_length-1))' + noise;
         												  
-			jammer = sin(2*pi*jammer_freq*(t(1:window_length)')+2*pi*rand*enable_jammer_jitter) + noise_j;
-			y = db4ra_collector([target,jammer],[incidentAngle,incidentAngle_j]); %calcolo l'uscita delle antenne della chirp che incide con l'angolo definito da incident angle
+			jammer = A_sin*sin(2*pi*jammer_freq*(t(1:window_length)')+2*pi*rand*enable_jammer_jitter) + noise_j;
+			%y = db4ra_collector([target,jammer],[incidentAngle,incidentAngle_j]); %calcolo l'uscita delle antenne della chirp che incide con l'angolo definito da incident angle
+			y = db4ra_collector(jammer,incidentAngle_j); %calcolo l'uscita delle antenne della chirp che incide con l'angolo definito da incident angle
 			
 			%ciclo per il numero di antenne, poiché y è un array di 4 vettori, uno per ciascuna antenna
 			for p = 1 : n_antennas
@@ -249,9 +255,9 @@ for n = 1 : snr_length
     end
 end
 
-%%
+A_sweptcw = 1;
 
-sweptcw_window_Sel = [(2+1) (4+1) (12+1) (24+1) (75 + 1)] * window_length;
+																		  
 sweptcw_window_Sel = (ceil(f_stop_array/100)*1.05);
 %ciclo la generazione per ciascuna delle dimensioni di snr_length
 for n = 1 : snr_length
@@ -289,13 +295,14 @@ for n = 1 : snr_length
 		            
             noise_j = randn(window_length, 1)*sqrt(noise_variance);
 											
-			target = (x_array(chirp_sel,window_sel:window_sel+window_length-1))' + noise;
+			target = A_target*(x_array(chirp_sel,window_sel:window_sel+window_length-1))' + noise;
         												  
-			jammer = sweptcw(sweptc_cw_window:sweptc_cw_window+window_length-1)' + noise_j;
+			jammer = A_sweptcw*sweptcw(sweptc_cw_window:sweptc_cw_window+window_length-1)' + noise_j;
 			y = db4ra_collector([target,jammer],[incidentAngle,incidentAngle_j]); %calcolo l'uscita delle antenne della chirp che incide con l'angolo definito da incident angle
+			%y = db4ra_collector(jammer,incidentAngle_j); %calcolo l'uscita delle antenne della chirp che incide con l'angolo definito da incident angle
 			
 			%ciclo per il numero di antenne, poiché y è un array di 4 vettori, uno per ciascuna antenna
-			for p = 1 : n_antennas
+            for p = 1 : n_antennas
 				temp = downsample(conv(y(:,p),fir_coeffs(chirp_sel,:),'same'), downsample_array(1)); %effettuo la decimazione
 				y_ds_temp(:,p) = temp; %salvo il l'uscita dell'antenna decimata nel dataset
             end
@@ -312,32 +319,123 @@ for n = 1 : snr_length
     end
 end
 
-%%
-err_count = 0;
-for i = (snr_length * n_dataset_samples_woj + 1) : (snr_length * n_dataset_samples_wj)
-    distance = abs(doa(i) - y_ds_cell{i,1});
-    if (distance <= 20)
-        err_count = err_count +1;
+
+
+doa = doa/100*8;
+					  
+
+sq_factor = 16;
+signals_square = zeros(size(signals,1)/sq_factor, size(signals,2)*sq_factor, 1, size(signals,4));
+for i = 1 : size(signals,4)
+    for m = 1 : sq_factor 
+        signals_square(:,(1+8*(m-1)):(8*m),1,i) = signals ((1+(4096/sq_factor)*(m-1):(4096/sq_factor)*(m)),:,1,i);
+		   
     end
 end
 
-if (err_count > 0)
-    fprintf(1,'There was an error!');
-end
- 
-err_count
+%%
+save("ds_window_swept_test_new.mat","y_ds_cell", "doa", "jam", "signals_square","-v7.3","-nocompression")
+			 						 
+%%
+%load ds_window_swept_test.mat
+						   
+use_8x8_stride = false;
 
-    % try
-    %    %Error-maker
-    % catch e %e is an MException struct
-    %     fprintf(1,'The identifier was:\n%s',e.identifier);
-    %     fprintf(1,'There was an error! The message was:\n%s',e.message);
-    %     % more error handling...
-    % end
+database_select = 2;
+							
+if database_select == 0 
+    
+    load .\networks\trained\db4ra_resnet18_256x128_swept.mat
+    load .\networks\trained\db4ra_resnet18_256x128_swept_pruned.mat
+    load .\networks\trained\db4ra_resnet18_256x128_swept_pruned_fine_20.mat
+    load .\networks\trained\db4ra_resnet18_256x128_swept_pruned_fine_30.mat
+    
+    n_of_nets = 4;
+    
+    net_array = cell(1,n_of_nets);
+    
+    net_array{1} = net;
+    net_array{2} = prunedNetTrained;
+    net_array{3} = prunedNetFineTrained20;
+    net_array{4} = prunedNetFineTrained30;
+
+    %RMSE_test_doa =    0.5377    0.7465    0.7229    1.7485
+
+elseif (database_select == 1) 
+    load .\networks\trained\db4ra_resnet18_256x128_swept_pruned_8x8.mat
+    load .\networks\trained\db4ra_resnet18_256x128_swept_pruned_fine_20_8x8.mat
+    load .\networks\trained\db4ra_resnet18_256x128_swept_pruned_fine_30_8x8.mat
+    
+    n_of_nets = 3;
+    
+    net_array = cell(1,n_of_nets);
+    
+    net_array{1} = prunedNetTrained;
+    net_array{2} = prunedNetFineTrained20;
+    net_array{3} = prunedNetFineTrained30;
+else
+
+    load .\networks\trained\db4ra_resnet18_256x128_swept_new.mat
+    
+    n_of_nets = 1;
+    
+    net_array = cell(1,n_of_nets);
+    
+    net_array{1} = net;
+end
+
+%% TESTING
+										   		   
+YTest = zeros(size(doa,1),2,n_of_nets);
+																					
+for i = 1 : n_of_nets 
+    YTest(:,:,i) = predict(net_array{i},signals_square);
+end
+
+%% TESTING
+doa_Pred = YTest(:,1,:);
+doa_Pred_denorm = doa_Pred *100 / 8;
+doa_Test_unnorm = doa * 100 / 8;
+
+jam_Pred = YTest(:,2,:);
+
+for i = 1 : n_of_nets
+    
+    figure
+    scatter(doa_Pred_denorm(:,i),doa_Test_unnorm,"+")
+    xlabel("Predicted Value")
+    ylabel("True Value")
+    
+    hold on
+    plot([-81 81], [-81 81],"r--")
+    grid on
+    grid minor
+    hold off
+    
+    RMSE_test_doa(i)=rmse(doa_Pred_denorm(:,i),doa_Test_unnorm)
+    
+    figure
+    scatter(sign(jam_Pred(:,i)),sign(jam),"+")
+    xlabel("Predicted Value")
+    ylabel("True Value")
+    
+    hold on
+    grid on
+    grid minor
+    hold off
+    RMSE_test_jam(:,i)=rmse(jam_Pred(:,i),jam)
+    
+    figure
+    C = confusionmat(sign(jam), double(sign(jam_Pred(:,i))));
+    confusionchart(C);
+
+									
+end
 
 %%
+figure
+scatter(doa_Pred_denorm((jam_Pred>0),i),doa_Test_unnorm(jam_Pred>0),"+")
+xlabel("Predicted Value")
+ylabel("True Value")
 
-doa = doa/100*8;
-
-save("ds_window_swept_new.mat","y_ds_cell", "doa", "jam", "signals","-v7.3","-nocompression")
-
+RMSE_test_doa_culo=rmse(doa_Pred_denorm((jam_Pred>0),i),doa_Test_unnorm(jam_Pred>0))
