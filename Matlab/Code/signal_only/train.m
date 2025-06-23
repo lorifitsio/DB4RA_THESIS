@@ -2,7 +2,7 @@ clc; clear; close all;
 
 load .\..\database\ds_signal_only.mat
 
-addpath(fullfile(pwd, '../../', 'Lib'));
+addpath(fullfile(pwd, '../../', 'Lib'));  %load trainingPartitions function
 
 %% CUSTOM SETTINGS
 Train_perc = 0.8; %percentage of dataset used for training
