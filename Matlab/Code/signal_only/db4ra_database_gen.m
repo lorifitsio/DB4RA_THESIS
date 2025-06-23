@@ -65,7 +65,7 @@ azimuth_start = -60; % degrees
 azimuth_stop  = 60; % degrees
 azimuth_angle = azimuth_start; % spanning between +60 and -60
 elevation_angle = 0; % tied constant
-azimuth_step = 1; % degrees. Qualsiasi valore reale maggiore di zero è valido per questo paramentro
+azimuth_step = 0.5; % degrees. Qualsiasi valore reale maggiore di zero è valido per questo paramentro
 incidentAngle = [azimuth_angle;elevation_angle];
 incidentAngleSteps = floor((azimuth_stop-azimuth_start)/azimuth_step);
 
@@ -126,3 +126,19 @@ for n = 1 : snr_length
     end
 end
 
+%%
+
+n_samples = length(y_ds_cell);
+
+doa=cell2mat(y_ds_cell(:,2)); %doa disturbo
+signals = zeros (length(y_ds_cell{1,1}),8,1,n_samples);
+
+for idx=1:n_samples
+
+    temp_real=real(cell2mat(y_ds_cell(idx,1)));
+    temp_imag=imag(cell2mat(y_ds_cell(idx,1)));
+
+    signals(:,:,1,idx)=[temp_real temp_imag];
+end
+%%
+save(".\..\database\ds_signal_only.mat","signals", "doa", "-v7.3","-nocompression")
