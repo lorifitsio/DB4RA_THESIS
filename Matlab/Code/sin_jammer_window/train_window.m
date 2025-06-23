@@ -7,7 +7,9 @@
 
 clc; clear; close all;
 
-load ds_window.mat
+load .\..\database\ds_window.mat
+
+addpath(fullfile(pwd, '../../', 'Lib')); %load trainingPartitions function
 
 %% CUSTOM SETTINGS
 Train_perc = 0.8; %percentage of dataset used for training
@@ -34,7 +36,7 @@ jam_Test = jam(idxTest);
 
 clear signals jam doa
 %%
-load .\networks\resnet18_mod0_window.mat
+load .\..\networks\resnet18_mod0_window.mat
 
 %% Training preparation
 miniBatchSize  = 64;
@@ -46,8 +48,8 @@ options = trainingOptions("rmsprop", ...
     MaxEpochs=35,...
     LearnRateSchedule="piecewise", ...
     InitialLearnRate=1e-3, ...
-    LearnRateDropFactor=0.05, ...
-    LearnRateDropPeriod=20, ...
+    ... %LearnRateDropFactor=0.05, ...
+    LearnRateDropPeriod=5, ...
     Shuffle="every-epoch", ...
     ValidationData={signals_Val,[doa_Val jam_Val]}, ...
     ValidationFrequency=validationFrequency, ...
@@ -61,7 +63,7 @@ options = trainingOptions("rmsprop", ...
 net = trainnet(signals_Train,[doa_Train jam_Train],net,"mse",options);
 
 %%
-save (".\networks\trained\resnet18_mod0_window.mat","net");
+save (".\..\networks\trained\resnet18_mod0_window.mat","net");
 %% TESTING
 YTest = predict(net,signals_Test);
 
@@ -87,28 +89,33 @@ grid on
 grid minor
 
 RMSE_test_jam=rmse(YTest(:,1),jam_Test)
-%%
-hold off
-C = confusionmat(sign(jam_Test), double(sign(YTest(:,2))));
-confusionchart(C);
 
 %%
-exportNetworkToTensorFlow(net,"db4ara_resnet_window")
+doa_Pred = YTest(:,1);
+jam_Pred = YTest(:,2);
+RMSE_test_doa=rmse(doa_Pred,doa_Test*10);
 
-
-%% TESTING
-samples_with_jammer = jam_Test ==1;
 figure
-scatter(YTest((samples_with_jammer),1),doa_Test(samples_with_jammer),"+")
+scatter(doa_Pred,doa_Test*10,"+")
 xlabel("Predicted Value")
 ylabel("True Value")
 
 hold on
-plot([-81 81]/10, [-81 81]/10,"r--")
+plot([-81 81], [-81 81],"r--")
+title("RMSE DOA [°]", num2str(RMSE_test_doa))
 grid on
 grid minor
+hold off
 
-RMSE_test_doa=rmse(YTest((samples_with_jammer),1),doa_Test(samples_with_jammer))
 
+   
+figure
+C = confusionmat(sign(jam_Test), double(sign(jam_Pred)));
+CC = confusionchart(C);
+CC.Title = 'Jammer Detection';
+CC.RowSummary = 'row-normalized';
+CC.ColumnSummary = 'column-normalized';
 %%
-save (".\networks\trained\test_vectors.mat","jam_Test", "signals_Test", "doa_Test");
+hold off
+C = confusionmat(sign(jam_Test), double(sign(YTest(:,2))));
+confusionchart(C);

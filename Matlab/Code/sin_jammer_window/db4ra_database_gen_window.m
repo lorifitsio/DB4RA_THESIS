@@ -109,9 +109,9 @@ P_chirp = (x_array(1,window_length:end-window_length+1)*(x_array(1,window_length
 %la lunghezza di ciascun segnale è pari a sample_length diviso il fattore
 %di sottocampionamento della chirp a 150 MHz. tutti i segnali sono adeguati
 %a questa trama, essendo il vettore più lungo
-n_dataset_samples_woj = 30000;
+n_dataset_samples_woj = 15000;
 
-n_chirp_angles = 1500;
+n_chirp_angles = 750;
 n_jammer_angles_per_chirp = 50;
 n_dataset_samples_wj = n_chirp_angles * n_jammer_angles_per_chirp;
 n_dataset_samples = snr_length * (n_dataset_samples_woj + n_dataset_samples_wj);
@@ -210,7 +210,6 @@ for n = 1 : snr_length
 			incidentAngle_j = [azimuth_angle_j;elevation_angle_j];
 		    noise = randn(window_length, 1)*sqrt(noise_variance); %genero un vettore di rumore per ogni iterazione
 			
-            chirp_sel = randi([1 n_scenarios], 1, 1);
             window_sel = randi([1 window_length], 1, 1);
 		            
             noise_j = randn(window_length, 1)*sqrt(noise_variance);
@@ -265,5 +264,5 @@ err_count
     % end
 
 %%
-save("ds_window.mat","y_ds_cell", "doa", "jam", "signals","-v7.3","-nocompression")
+save(".\..\database\ds_window.mat","y_ds_cell", "doa", "jam", "signals","-v7.3","-nocompression")
 

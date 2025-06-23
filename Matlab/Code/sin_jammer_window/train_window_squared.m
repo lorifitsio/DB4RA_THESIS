@@ -18,16 +18,16 @@ resize_dataset = false;
 
 if resize_dataset == true 
     square_factor = 8; 
-    load ds_window.mat
+    load .\..\database\ds_window.mat
     signals_square = zeros(size(signals,1)/square_factor, size(signals,2)*square_factor, 1, size(signals,4));
     for i = 1 : size(signals,4)
         for m = 1 : square_factor 
             signals_square(:,(1+8*(m-1)):(8*m),1,i) = signals ((1+(4096/square_factor)*(m-1):(4096/square_factor)*(m)),:,1,i);
         end
     end
-    save ("ds_window_squared.mat", "signals_square", "doa", "jam", "y_ds_cell", "-v7.3","-nocompression")
+    save (".\..\database\ds_window_squared.mat", "signals_square", "doa", "jam", "y_ds_cell", "-v7.3","-nocompression")
 else
-    load ds_window_squared.mat
+    load .\..\database\ds_window_squared.mat
 end
 
 %% CUSTOM SETTINGS
@@ -55,7 +55,7 @@ jam_Test = jam(idxTest);
 
 clear signals signals_square jam doa
 %%
-load .\networks\resnet18_mod0_window_squared.mat
+load .\..\networks\resnet18_mod0_window_squared.mat
 
 %% Training preparation
 miniBatchSize  = 64;
@@ -67,8 +67,8 @@ options = trainingOptions("rmsprop", ...
     MaxEpochs=35,...
     LearnRateSchedule="piecewise", ...
     InitialLearnRate=1e-3, ...
-    LearnRateDropFactor=0.05, ...
-    LearnRateDropPeriod=20, ...
+    LearnRateDropFactor=0.1, ...
+    LearnRateDropPeriod=6, ...
     Shuffle="every-epoch", ...
     ValidationData={signals_Val,[doa_Val jam_Val]}, ...
     ValidationFrequency=validationFrequency, ...
@@ -81,7 +81,7 @@ options = trainingOptions("rmsprop", ...
 net = trainnet(signals_Train,[doa_Train jam_Train],net,"mse",options);
 
 %%
-save (".\networks\trained\resnet18_mod0_window_squared.mat","net");
+save (".\..\networks\trained\resnet18_mod0_window_squared.mat","net");
 
 %% TESTING
 YTest = predict(net,signals_Test);
@@ -108,28 +108,36 @@ grid on
 grid minor
 
 RMSE_test_jam=rmse(YTest(:,1),jam_Test)
-%%
-hold off
-C = confusionmat(sign(jam_Test), double(sign(YTest(:,2))));
-confusionchart(C);
 
 %%
-exportNetworkToTensorFlow(net,"db4ara_resnet_window_squared")
 
+%%
+doa_Pred = YTest(:,1)*10;
+jam_Pred = YTest(:,2);
+RMSE_test_doa=rmse(doa_Pred,doa_Test*10);
 
-%% TESTING
-samples_with_jammer = jam_Test ==1;
 figure
-scatter(YTest((samples_with_jammer),1),doa_Test(samples_with_jammer),"+")
+scatter(doa_Pred,doa_Test*10,"+")
 xlabel("Predicted Value")
 ylabel("True Value")
 
 hold on
-plot([-81 81]/10, [-81 81]/10,"r--")
+plot([-81 81], [-81 81],"r--")
+title("RMSE DOA [°]", num2str(RMSE_test_doa))
 grid on
 grid minor
+hold off
 
-RMSE_test_doa=rmse(YTest((samples_with_jammer),1),doa_Test(samples_with_jammer))
+
+   
+figure
+C = confusionmat(sign(jam_Test), double(sign(jam_Pred)));
+CC = confusionchart(C);
+CC.Title = 'Jammer Detection';
+CC.RowSummary = 'row-normalized';
+CC.ColumnSummary = 'column-normalized';
 
 %%
-save (".\networks\trained\test_vectors.mat","jam_Test", "signals_Test", "doa_Test");
+hold off
+C = confusionmat(sign(jam_Test), double(sign(YTest(:,2))));
+confusionchart(C);
